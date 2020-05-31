@@ -1,0 +1,154 @@
+---
+title: "Find Geolocations for U.S. cities"
+author: "Meltem Odabas"
+date: "May 31, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+In this tutorial we will use R to first find a list of U.S. cities and then find the geolocations of these cities.
+
+This requires two steps:
+
+* Web scraping the list of cities from a website
+* Getting geoloction data using an API. We will use Google API.
+
+## Find a List of U.S. cities
+
+After doing a simple Google search, I found the following website where all the cities in each state are listed: <https://www.britannica.com/topic/list-of-cities-and-towns-in-the-United-States-2023068>.
+
+In order to scrape the information here, we will need the followng packages:
+
+```{r echo=T, results='hide', message=FALSE}
+library(rvest)
+library(xml2)
+library(stringr)
+```
+
+After we load the packages, the next step will be to read the html page:
+```{r}
+#Use Brittanica Webpage to gather list of locations in each state in the United States
+html <- "https://www.britannica.com/topic/list-of-cities-and-towns-in-the-United-States-2023068"
+webpage <- read_html(html)
+```
+
+In the next step, we will need to find where the information we are looking for is located. To do so, we will 'inspect' the website. While you are browsing your website, click Ctrl+Shift+I, or, right click and select 'Inspect'. A window on the right hand side will pop-up.
+
+Html files have a nested structure. We will need to find where the state and city text are located in this file.
+
+![an image](C:/Users/Meltem Odabas/Downloads/Capture.png)
+
+After some investigation, we find out that each state is designated with its own section with a separate section id; and then all the cities (or designated regions) in the state is listed in a list. Section ids for each section goes as ref326620,ref326621... until ref326669.
+
+Let's get the written text for Alabama only, with the reference number ref326620. 
+```{r}
+alabama <- 
+  # The character indicates the type of the container (section) and its id (ref326620)
+  html_nodes(webpage, 'section#ref326620') %>% 
+  # The '.' indicates the class
+  html_nodes('.md-crosslink')%>% 
+  # Extract the raw text as a list
+  html_text()
+
+alabama
+```
+
+Note that the first entry is Alabama. If we wanted convert this to a data frame where the first column lists the cities and the second column lists the state, we would do the following:
+
+```{r}
+library(data.table)
+s <- alabama[1] #state character
+p <- alabama[2:length(alabama)] #everything in alabama expect for the first element
+tmp <- data.table(           #a data table
+  city = p,                  #that binds the character vector of cities
+  state = rep(s,length(p))   #with another character vector that 
+                             #simply repeates the state character
+                             #and is the same length with the character vector of cities.
+        )
+tmp
+```
+
+
+So, let's do the same for all its from ref326620 to ref326669.
+Below is a loop that creates a list of dataframes for each state.
+
+```{r}
+df <- list()
+for (i in 1:50){
+  places <- html_nodes(webpage, paste0('section#ref',i+326619)) %>% 
+    # The '.' indicates the class
+    html_nodes('.md-crosslink') %>% 
+    # Extract the raw text as a list
+    html_text()
+  
+  s <- places[1]
+  p <- places[2:length(places)]
+  df[[i]] <- data.table(           #a data table
+        city = p,                  #that binds the character vector of cities
+        state = rep(s,length(p))   #with another character vector that 
+                             #simply repeates the state character
+                             #and is the same length with the character vector of cities.
+        )
+}
+
+```
+
+To row bind the list of dataframes to one giant dataframe, I will use *rbindlist()* function from *data.table* package:
+
+```{r}
+df <- rbindlist(df)
+df                         #print df
+```
+
+## Retrieve the Geolocations of the Cities
+
+Next, I will use *ggmap* package to find the geolocations for the list of cities we have.
+
+```{r echo=T, results='hide', message=FALSE}
+library(ggmap)
+```
+
+To use Google API to retrieve this information, you need to get a Google API key. The documentation for how to get an API key can be found [here]<https://developers.google.com/maps/documentation/javascript/get-api-key>.
+
+Once you have your google API key, you first need to register your key and then use *mutate_geocode() function to retrieve the geolocation information.
+
+```{r include=FALSE}
+your_key_here = read.csv("D:/Projects/Git/tutorials/data_git_ignore/google_api_key.csv",
+                           header = FALSE, stringsAsFactors = FALSE)
+your_key_here = your_key_here[1,1]
+```
+
+```{r}
+register_google(key = your_key_here)
+```
+
+It would make sense to enter both the city and state name as the search term, rather than only the city name. So, let's generate a new column for this. I will use *tidyverse* packages (specifically *dplyr*) for this. Please note that our **df** is a data.table, not a tibble. So we will need to convert our data frame to a tibble first.
+
+```{r echo=T, results='hide', message=FALSE}
+library(dplyr)
+```
+```{r}
+df <- as_tibble(df) %>%
+  mutate(search = paste(city,state))
+df
+```
+
+Ok, so now we are ready to collect the geolocation information! 
+Because we have a long list of cities, I will collect this information for the first 10 cities only, for this tutorial. You can use the full data if you like, but takes a while to run.
+
+```{r echo=T, results='hide', message=FALSE}
+small_df <- df[1:10,]                  # only the first 10 rows of the data
+geocode_df <- mutate_geocode(small_df, #small data
+                             search)   #search term column
+```
+
+```{r}
+geocode_df
+```
+ So *mutate_geocode()* function adds two column to our dataset: lat (for latitude) and lon (for longitude).
+ 
+ 
