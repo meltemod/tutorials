@@ -1,0 +1,106 @@
+---
+title: "Collect Tweet Data (more than 18K!)"
+author: "Meltem Odabas"
+date: "June 8, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Tweet Collection
+
+In this tutorial I will show you how to collect **more than 18K tweets** and save them to our computer in an **organized, systematic way**.
+
+One good Rscript writing practice is to define your data directory as your 'bucket' from the very beginning. This is ideally a directory that is separate from where you save your R files for coding. Have one folder for codes, another for your dataset. So, you might be working on a completely different directory in R [this is what you see when you type getwd()]; but when you save your data, you will save it to a file or folder located in your bucket, regardless of which directory you are working at easily!
+
+Setting your bucket in your R code will also help you to change the bucket name easily (for instance, if you switch from one computer to another).
+
+Ok, let's set your bucket:
+
+```{r}
+bucket <- 'type your bucket location here'
+#for me, it is the following, so you will need to change this for your own use:
+bucket <- '/N/project/c19/tutorial_data'
+```
+
+So, this is your bucket name. Maybe you already opened up this folder, or maybe you did not. The code below checks if this folder already exists, and if not, creates this bucket for you:
+
+```{r}
+if(dir.exists(bucket)==FALSE){
+  dir.create(bucket)
+}
+```
+
+Great! so now we have a new folder for saving the data we will collect. We will use this folder in a minute.
+
+##Let's practice tweet data collection first
+
+Ok, so before we think too much about how to save the files, let's learn how to collect tweets first! I am assumng you will use your personal standard twitter API. I will not got into the details of how to get a Twitter Developer API, I am pretty sure search engines are full of such kind of instructions. 
+
+Since we will use the **rtweet** package for tweet collection, we will set our token first, following the code below. Keep in mind: never share your tokens or passwords with others. Therefore you will not see mine written here, but keep in mind that I am using that information in the background:
+
+```{r, eval=F, echo=T}
+## load rtweet package
+library(rtweet)
+
+##
+#fill in the information to the lines 7-11 from the Twitter developer website
+
+appname = 'your-ap-name-here'
+key = 'your-key-here'
+secret = 'your-secret-here'
+access_token = 'your-access-token-here'
+access_secret= 'your-access-secret-here'
+
+twitter_token <- create_token(
+  app = appname,
+  consumer_key = key,
+  consumer_secret = secret,
+  access_token = access_token,
+  access_secret = access_secret)
+
+```
+
+```{r include=FALSE}
+keys = read.csv("D:/Projects/Git/tutorials/data_git_ignore/twitter_api_key.csv",
+                           header = FALSE, stringsAsFactors = FALSE)
+for (i in 1:nrow(keys)){
+  assign(keys$V1[i], keys$V2[i])
+}
+
+twitter_token <- create_token(
+  app = appname,
+  consumer_key = key,
+  consumer_secret = secret,
+  access_token = access_token,
+  access_secret = access_secret)
+```
+
+There are different ways of collecting tweets with rtweet package using the standard Twitter API:
+
+* **stream_tweets().** Stream in real time (i.e., live stream). This does not have a rate limit. This search is known to give approx. 10% of the all tweets relevant to your search.
+* **search_tweets().** Collect the most recent tweets. There is a rate limit, meaning that you can collect at most 18K tweets within 15 minutes. This method allows you to go back in time while collecting, however no more than 6-9 days. So, keep that in mind. 
+* **get_timeline().**Select a user and collect their most recent tweets (you can collect up to 3.2K tweets. No more)
+
+For more options, *check this website*[https://rtweet.info/articles/intro.html]
+
+we will use **search_tweets()** today.
+
+Let's search for a hashtag! How about... '#rladies' ? And for our practive let's collect 5 tweets:
+```{r}
+query <- "#rladies"
+collect_count <- 5
+
+tweets <- search_tweets(query,
+                        include_rts=FALSE, #decide whether you want to include rwtweets or not.
+                        n=collect_count)
+```
+
+This dataset should include many columns. Let's check its dimensions and the names of the columns to see what kind of information we are collectiong regarding these tweets (and the users posting these tweets!)
+
+```{r}
+dim(tweets)
+names(tweets)
+```
