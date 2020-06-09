@@ -135,12 +135,21 @@ fname_test
 fwrite(tweets, fname_test)
 ```
 
-Actually, there is another option! To save the data as a json file. To do this, however, you need to set that option before you start strea
+```{r, echo=FALSE, results="hide"}
+library(jsonlite)
+```
+
 ```{r}
-fname_test2 <- file.path(bucket,export_loc,"test.json")
 tweets <- search_tweets(query,
                         include_rts=FALSE, #decide whether you want to include rwtweets or not.
                         n=collect_count,
-                        parse=FALSE,
+                        parse=FALSE, #do not parse the dataset, leave the information nested.
                         file_name = fname_test2)
+
+```
+
+
+```{r}
+fname_test2 <- file.path(bucket,export_loc,"test.json")
+write_json(tweets,fname_test2)
 ```
