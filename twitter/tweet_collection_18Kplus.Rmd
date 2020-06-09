@@ -13,6 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 In this tutorial I will show you how to collect **more than 18K tweets** and save them to our computer in an **organized, systematic way**.
 
+## Let's start with organizing! Define your data folder location, create folders if needed.
+
 One good Rscript writing practice is to define your main data folder as your 'bucket' from the very beginning. This is ideally a directory that is separate from where you save your R files for coding. Have one folder for codes, another for your dataset. So, you might be working on a completely different directory in R [this is what you see when you type getwd()]; but when you save your data, you will save it to a file or folder located in your bucket, regardless of which directory you are working at easily!
 
 Setting your bucket in your R code will also help you to change the bucket name easily (for instance, if you switch from one computer to another).
@@ -37,7 +39,7 @@ Next is to speficy a new folder in this bucket folder. This way I know the data 
 ```{r}
 file.path(bucket,'twitter','tweet_collection_18Kplus') #the file.path function takes all the elements in it and merges them in a way that you can use it as a file or folder location!
 tmp <- 'twitter' #the upper folder
-export_loc <-  file.path('twitter','tweet_collection_18Kplus') #the folder where we will save our tweet data
+export_loc <-  file.path(bucket,'twitter','tweet_collection_18Kplus') #the folder where we will save our tweet data
 
 #check whether the twitter folder exists first, (i.e., the upper folder)
 if(dir.exists(file.path(bucket,tmp))==FALSE){
@@ -45,12 +47,12 @@ if(dir.exists(file.path(bucket,tmp))==FALSE){
 }
 rm(tmp)
 #and then create the folder under the upper folder -- this is going to be our "export location"
-if(dir.exists(file.path(bucket,export_loc))==FALSE){
-  dir.create(file.path(bucket,export_loc))
+if(dir.exists(file.path(export_loc))==FALSE){
+  dir.create(file.path(export_loc))
 }
 ```
 
-Great! so now we have a new folder for saving the data we will collect. We will use this folder in a minute.
+Great! so now we have a new folder for saving the data we will collect.
 
 ##Let's practice tweet data collection first
 
@@ -120,9 +122,12 @@ This dataset should include many columns. Let's check its dimensions and the nam
 ```{r}
 dim(tweets)
 names(tweets)
+tweets[1,1:10] #list the first 10 columns
 ```
 
 This is a lot of information! Right now we have 5 tweets, but what if we were to have... A million tweets?!? Well, there are ways to save to data frames in compressed formats. For example, you can save it as a csv, fst, or a compressed csv file. For bigger files I prefer to use the data.table package for working with large files and save them as fst, so this is what I will use for now. However, you can use other options!
+
+**Note:** There is also an option to save the data as json file, but this is not what I will go into in today's tutorial.
 
 ```{r, echo=FALSE, results="hide"}
 library(data.table)
@@ -130,26 +135,174 @@ library(fst)
 ```
 
 ```{r}
-fname_test <- file.path(bucket,export_loc,"test.fst")
+fname_test <- file.path(export_loc,"test.fst")
 fname_test
 fwrite(tweets, fname_test)
 ```
 
-```{r, echo=FALSE, results="hide"}
-library(jsonlite)
-```
+And this is what you will see:
+![](C:/Users/Meltem Odabas/Downloads/Capture.png)
+
+But, let's delete this for now, so we can start from scratch.
 
 ```{r}
-tweets <- search_tweets(query,
-                        include_rts=FALSE, #decide whether you want to include rwtweets or not.
-                        n=collect_count,
-                        parse=FALSE, #do not parse the dataset, leave the information nested.
-                        file_name = fname_test2)
-
+file.remove(fname_test)
 ```
 
+##Now it is time for the real deal: collect more than 18K!
+
+So, there is this thing called 'rate limit,' and you need to be beware about this. When using Twitter's standard API to collect data from the past, you are limited with collection 18K tweets at a time. This means, you need to make sure that you need to wait for 15 minute before you ask for the 18,001st tweet you request to collect. Although **search_tweets()** function includes a parameter called *retryonratelimit = * and when you set this to *"TRUE"* it will to the sleeping part aotumatically for you, if you are aiming to collect, say, 1 million tweets, there is a huge chance that your connection might be lost, and you can end up losing what you collected thus far. Therefore, my suggestion is to write your code so that even if you lose connection or your function breaks for some unforeseen reason, you still get to keep the data you collected thus far, and you can get to save that.
+
+To this is what we will focus on today.
+
+###Remind your future self what you searched for n your query
+
+search_tweets() function allows you to do multiple term searches at a time. For example, it is possible to not only search for #rladies" but also "#rstats" at one go. You will know what your query included today, but, when you look at your data, sat, three months from now, will you remember what exactly you searched for? So, create a reminder file for yourself. A very simple text file.
 
 ```{r}
-fname_test2 <- file.path(bucket,export_loc,"test.json")
-write_json(tweets,fname_test2)
+q <- list()
+q[[1]] <- paste("search query:",query)
+fwrite(q, file = file.path(export_loc,"readme.txt"))
 ```
+
+So now, we can one file in our folder, named as "readme.txt"
+```{r}
+files <- list.files(path = export_loc)
+files
+```
+
+Great. Now,this is what we will want to do. We will want to collect the data in chunks. Say 18K at a time.At every round, we will store the data collected in a variable. Once we reach the rate limit, we will ask our code to not to do anything (i.e., sleep) for 15 minutes. Then, we will want to save a file once we reach to, say, 180K tweets. This way, we will save a big enough list of tweets in a file, but the file will not be a giant one that will slow down opening process for R when we need to use it in the future. And we will do rounds of that until we reach the total number of tweets we want to collect (say, 1M).
+
+Let's start with setting up those numbers
+
+```{r}
+n_search <- 18000
+n_total <- 1000000
+round_total <- 10 #we will make 10 rounds of 18K tweet collection and then save as we reach to 180K collected tweets
+```
+
+We can write a loop function to do this for us. Before we do so, however, keep in mind that search_tweets() function collects tweets in the order from newest to the oldest. This means that if you do not set your parameters right, you will end up collecting even newer tweets in your second search, not be able to go back in time while collecting your data.
+
+The parameter you need to be aware of for this purpose is called *max_id()*. Say, in your first search, you collected five tweets with the following tweet numbers: 3046,2034,1984,832,824 (because the newest tweets will have higher numbers, this is how they will be ordered. The newest tweet is collected first, then an older one, and so forth). In your second search, if you set your max_id parameter to max_id="824", this will not allow collecting tweets that have a value higher than 824, so you will know for sure that you are collecting older tweets from what you have collected thus far.
+
+Let's write the loop to collect 180K tweets:
+```{r, eval=F, echo=T}
+#first, set the parameters
+query <- "#rladies"
+n_search <- 18000
+n_total <- 1000000
+round_total <- 10
+rt <- FALSE #do not include retweets in our search
+maxid <- NULL #for the first round, set maxid to null, which will let us collect the newest tweets.
+
+#create an empty list, we will save the 10 dataframes we will collect as list items here.
+tweetList <- list() 
+
+#the loop:
+for (i in c(1:round_total)){
+    print(paste("data number:",i,"out of",round_total))
+    tweets <- search_tweets(query,
+                            include_rts=rt, 
+                            n=n_search,
+                            max_id = maxid)
+    tweetList[[i]] <- tweets
+    maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
+    rm(tweets)
+    #sleep for 15 minutes before collecting the next dataset
+    if(i<round_total){
+      print('sleeping for 15 minutes')
+      Sys.sleep(60*15)
+    }
+}
+df_tweets <- rbindlist(tweetList) #bind all the dataframes in the list to one dataframe. a data.table function.
+```
+
+We also need to be careful about naming our files. Each data should have a number, such as "tweets_1.fst","tweets_2.fst" and so on. Note that search_tweets() function collects tweets in the order from newest to the oldest, so the file with the lowest number value will include the newest tweets. Also, keep in mind that you may reach to two-digit or three-digit file numbers if you are collecting a massive dataset. To make sure that the datasets will be ordered from newest to the oldest in your folder, add preceding zeros to those numbers, such as "tweets_001.fst","tweets_002.fst"
+
+```{r}
+paste0("tweets_",sprintf("%03d", 1),".fst")
+paste0("tweets_",sprintf("%03d", 54),".fst")
+```
+
+Now, if you are starting to collect tweets fresh, you will give your file the name "tweets_001.fst". However, it is possible that your code might break and you might need to start over. You do not want to overwrite what you collected thus far, right?
+
+Say, your last saved file is names as "tweets_005.fst". You want to make sure of two things in this case:
+
+*Naming your next file as "tweets_006.fst",
+*Setting the max_is to the status_id value of the last row of the dataset saved as "tweets_005.fst".
+
+So, you want your code to do this:
+
+*check if there is only one (i.e., readme.txt file) saved in the folder.
+*if so, 
+  +set your starting maxid to NULL , collect your data, and save it as  "tweets_001.fst".
+*otherwise,
+  + Otherwise, check the name of the last file listed in your folder, grab the digits from the filename, and add 1 to that value.
+  +read the status_id column of the last saved dataset, and set your maxid parameter to the value listed in the last row.
+  
+So, let's revise our former loop to collect 180K tweets and then save it to its designated folder:
+
+```{r, eval=F, echo=T}
+
+#first, set the parameters
+query <- "#rladies"
+n_search <- 18000
+n_total <- 1000000
+round_total <- 10
+rt <- FALSE #do not include retweets in our search
+maxid <- NULL #for the first round, set maxid to null, which will let us collect the newest tweets.
+
+#create an empty list, we will save the 10 dataframes we will collect as list items here.
+tweetList <- list() 
+#read the list of files saved under the data folder to a variable called 'files'
+files <- list.files(path = export_loc)
+
+#loop:
+if (length(files)==1){
+  for (i in c(1:round_total)){
+    print(paste("file number:",1,"; data number:",i,"out of",round_total))
+    tweets <- search_tweets(query,
+                            include_rts=rt, 
+                            n=n_search,
+                            max_id = maxid)
+    tweetList[[i]] <- tweets
+    maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
+    rm(tweets)
+    #sleep for 15 minutes before collecting the next dataset
+    if(i<round_total){
+      print('sleeping for 15 minutes')
+      Sys.sleep(60*15)
+    }
+  }
+  df_tweets <- rbindlist(tweetList) #bind all the dataframes in the list to one dataframe. a data.table function.
+  fwrite(df_tweets, file = file.path(export_loc,paste0("tweets_",sprintf("%03d", 1),".fst")))
+}else{
+  tmp <- fread(file.path(export_loc,files[length(files)]),select = "status_id")
+  #get the status_id of the oldest tweet, set it as `maxid`
+  maxid <- as.character(tail(tmp$status_id,1))
+  #set the file number based on the number of the last saved file (add one)
+  file.no <- as.numeric(substr(files[length(files)],8,11))+1
+  #remove tmp
+  rm(tmp)
+  for (i in c(1:round_total)){
+    print(paste("file number:",file.no,"; data number:",i,"out of 10"))
+    tweets <- search_tweets(query,
+                            include_rts=rt, 
+                            n=n_search,
+                            max_id = maxid)
+    tweetList[[i]] <- tweets
+    maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
+    rm(tweets)
+    #sleep for 15 minutes before collecting the next dataset
+    if(i<round_total){
+      print('sleeping for 15 minutes')
+      Sys.sleep(60*15)
+      }
+  }
+  df_tweets <- rbindlist(tweetList)
+  fwrite(df_tweets, file = file.path(export_loc,paste0("tweets_",sprintf("%03d", file.no),".fst")))
+}
+
+```
+  
+How many 
