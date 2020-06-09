@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 In this tutorial I will show you how to collect **more than 18K tweets** and save them to our computer in an **organized, systematic way**.
 
-One good Rscript writing practice is to define your data directory as your 'bucket' from the very beginning. This is ideally a directory that is separate from where you save your R files for coding. Have one folder for codes, another for your dataset. So, you might be working on a completely different directory in R [this is what you see when you type getwd()]; but when you save your data, you will save it to a file or folder located in your bucket, regardless of which directory you are working at easily!
+One good Rscript writing practice is to define your main data folder as your 'bucket' from the very beginning. This is ideally a directory that is separate from where you save your R files for coding. Have one folder for codes, another for your dataset. So, you might be working on a completely different directory in R [this is what you see when you type getwd()]; but when you save your data, you will save it to a file or folder located in your bucket, regardless of which directory you are working at easily!
 
 Setting your bucket in your R code will also help you to change the bucket name easily (for instance, if you switch from one computer to another).
 
@@ -22,7 +22,7 @@ Ok, let's set your bucket:
 ```{r}
 bucket <- 'type your bucket location here'
 #for me, it is the following, so you will need to change this for your own use:
-bucket <- '/N/project/c19/tutorial_data'
+bucket <- 'E:/Work_20200326/datasets/github-tutorials'
 ```
 
 So, this is your bucket name. Maybe you already opened up this folder, or maybe you did not. The code below checks if this folder already exists, and if not, creates this bucket for you:
@@ -30,6 +30,23 @@ So, this is your bucket name. Maybe you already opened up this folder, or maybe 
 ```{r}
 if(dir.exists(bucket)==FALSE){
   dir.create(bucket)
+}
+```
+
+Next is to speficy a new folder in this bucket folder. This way I know the data is coming from this particular RMarkdown file!
+```{r}
+file.path(bucket,'twitter','tweet_collection_18Kplus') #the file.path function takes all the elements in it and merges them in a way that you can use it as a file or folder location!
+tmp <- 'twitter' #the upper folder
+export_loc <-  file.path('twitter','tweet_collection_18Kplus') #the folder where we will save our tweet data
+
+#check whether the twitter folder exists first, (i.e., the upper folder)
+if(dir.exists(file.path(bucket,tmp))==FALSE){
+  dir.create(file.path(bucket,tmp))
+}
+rm(tmp)
+#and then create the folder under the upper folder -- this is going to be our "export location"
+if(dir.exists(file.path(bucket,export_loc))==FALSE){
+  dir.create(file.path(bucket,export_loc))
 }
 ```
 
@@ -103,4 +120,27 @@ This dataset should include many columns. Let's check its dimensions and the nam
 ```{r}
 dim(tweets)
 names(tweets)
+```
+
+This is a lot of information! Right now we have 5 tweets, but what if we were to have... A million tweets?!? Well, there are ways to save to data frames in compressed formats. For example, you can save it as a csv, fst, or a compressed csv file. For bigger files I prefer to use the data.table package for working with large files and save them as fst, so this is what I will use for now. However, you can use other options!
+
+```{r, echo=FALSE, results="hide"}
+library(data.table)
+library(fst)
+```
+
+```{r}
+fname_test <- file.path(bucket,export_loc,"test.fst")
+fname_test
+fwrite(tweets, fname_test)
+```
+
+Actually, there is another option! To save the data as a json file. To do this, however, you need to set that option before you start strea
+```{r}
+fname_test2 <- file.path(bucket,export_loc,"test.json")
+tweets <- search_tweets(query,
+                        include_rts=FALSE, #decide whether you want to include rwtweets or not.
+                        n=collect_count,
+                        parse=FALSE,
+                        file_name = fname_test2)
 ```
