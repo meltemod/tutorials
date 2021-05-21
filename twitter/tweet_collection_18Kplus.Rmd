@@ -54,7 +54,7 @@ if(dir.exists(file.path(export_loc))==FALSE){
 
 Great! so now we have a new folder for saving the data we will collect.
 
-##Let's practice tweet data collection first
+## Let's practice tweet data collection first
 
 Ok, so before we think too much about how to save the files, let's learn how to collect tweets first! I am assumng you will use your personal standard twitter API. I will not got into the details of how to get a Twitter Developer API, I am pretty sure search engines are full of such kind of instructions. 
 
@@ -134,13 +134,13 @@ names(tweets)
 tweets[1,1:10] #list the first 10 columns
 ```
 
-##Now it is time for the real deal: collect more than 18K!
+## Now it is time for the real deal: collect more than 18K!
 
 So, there is this thing called 'rate limit,' and you need to be beware about this. When using Twitter's standard API to collect data from the past, you are limited with collection 18K tweets at a time. This means, you need to make sure that you need to wait for 15 minute before you ask for the 18,001st tweet you request to collect. Although **search_tweets()** function includes a parameter called *retryonratelimit = * and when you set this to *"TRUE"* it will to the sleeping part automatically for you, if you are aiming to collect, say, 1 million tweets, there is a huge chance that your connection might be lost, and you can end up losing what you collected thus far. Therefore, my suggestion is to write your code so that even if you lose connection or your function breaks for some unforeseen reason, you still get to keep the data you collected thus far, and you can get to save that.
 
 To this is what we will focus on today.
 
-###Remind your future self what you searched for n your query
+### Remind your future self what you searched for n your query
 
 search_tweets() function allows you to do multiple term searches at a time. For example, it is possible to not only search for #rladies" but also "#rstats" at one go. You will know what your query included today, but, when you look at your data, sat, three months from now, will you remember what exactly you searched for? So, create a reminder file for yourself. A very simple text file.
 
@@ -257,7 +257,7 @@ my_search_tweets = function(q, # query
 
 And let's collect all tweets from today with the hashtag: '#coronavirus' posted in the last two days:
 
-```{r, eval=T, echo=T}
+```{r, eval=F, echo=T}
 my_search_tweets(q = '#coronavirus',
                  since='2021-05-19',
                  until='2021-05-21',
