@@ -1,0 +1,157 @@
+---
+title: "Collecting data from American Community Survey"
+author: "Meltem Odabas"
+date: "5/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ACS data
+
+American Community Survey data provides demographic information such as population, age, gender, race, ethinicity... at the geographic unit level. These units can be as big as states or as fine-grained as tracts (I can hear you asking what a tract is... ) 
+
+And actually by defining the ACS this way I am not doing a good service because the survey collects ways more information than what I described here. Take a look at their webpage for more information: https://www.census.gov/programs-surveys/acs/data.html
+
+My point is: it is a great resource for looking at geographical dynamics! 
+
+Below are the list of topics you can find variables for in ACS:
+
+- Age and Sex
+- Business and Economy
+- Congressional Apportionment
+- Education
+- Emergency Management
+- Employment
+- Families and Living Arrangements
+- Geography
+- Health
+- Hispanic Origin
+- Housing
+- Income and Poverty
+- International Trade
+- Population
+- Population Estimates
+- Public Sector
+- Race
+- Research
+- Voting and Registration
+
+Ok, why are we using R again? Because the Census data has an API you can use to gather this dataset easily to your R working environment!
+
+We will use the [tidycensus](https://walker-data.com/tidycensus/articles/basic-usage.html) package. While the package page gives more information about the package documentation and provides tutorials, I will show some tricks to organize the data efficiently when you are collecting multiple variables at a time.
+
+## Get an API key
+
+This is a super simple process. Simply go visit: http://api.census.gov/data/key_signup.html and get one.
+
+Then, load the package and register your key. I saved mine to a csv file and so I will upload my key from there. (Note: do not share your key with others. It is a good practice to load such information from a dataset when you are creating a tutorial, like this one.)
+
+```{r include=F, echo=F}
+bucket = "E:\\data\\vaccine-finder"
+
+```
+
+```{r, echo=T, results=FALSE, comment=FALSE, warning=FALSE}
+#load libraries
+library(tidycensus)
+library(tidyverse)
+
+#load census key (I saved it as cvs file so that I do not have to type it in.)
+key = read_csv(file.path(bucket,'census_api_key.csv'))$value[1]
+census_api_key(key, install=TRUE,overwrite=TRUE) #load key
+
+```
+## Choose your dataset type
+
+The Census collects a number of datasets. Since we are interested in the ACS today, we will either use 1-year ACS or 5-year ACS data. The 5-year version gathers data from 5 year time points and creates and estimate for your variable(s) of interest.
+
+Because ACS assigns 'codes' rather than variable names, it is useful to check their codebook. Use the view option to explore the available variables in the codebook
+
+```{r}
+#to see the list of all variables:
+df_vars = load_variables(2019,dataset='acs5')
+view(df_vars)
+```
+
+## Gather data
+
+You can collect multiple variables at a time, at various geographic levels. Today, we will collect information on metro areas.
+
+Let's start by defining your geographic unit, and creating a dataset with the variable codes and your assigned variable names:
+```{r}
+geog = "metropolitan statistical area/micropolitan statistical area"
+
+my_varnames = c('population','median.age')
+my_vars = c('B01001_001','B01002_001')
+
+df_myvars = tibble(varname = my_varnames, variable = my_vars)
+df_myvars
+```
+
+
+Now, use *get_acs()* function to gather the data you want:
+```{r}
+#gather data
+df_2019 = get_acs(geography = geog, #collect data at county level. Other available options are 'tract', 'blockgroup' or 'block'
+                  variables = my_vars,
+                  year = 2019,
+                  survey = "acs5")
+head(df_2019)
+```
+
+## Beautify your data!
+
+Let's make it more easily readable for our fellow researchers and teammates. First, let's start adding a new column and use our assigned variable names rather than the ACS variable codes:
+
+```{r}
+df_2019 = merge(df_2019, df_myvars, by = 'variable')
+head(df_2019)
+```
+
+Next, because we are interested in the metro areas only, let's remove the micro areas listed:
+
+```{r}
+df_2019 = df_2019[grep('Metro',df_2019$NAME), ] #gets only the metro areas
+df_2019$NAME = gsub('Metro Area','',df_2019$NAME) #deletes the phrase 'Metro Area'
+df_2019$NAME = trimws(df_2019$NAME) #trims whitespace from left and right hand side of the character elements.
+```
+
+Maybe we would want to search metro areas by state. So it would be useful to divide the 'NAME' column into two columns: 'metro' and 'state'.
+
+```{r}
+x = strsplit(df_2019$NAME,', ')
+metro_names = c()
+metro_states = c()
+for(i in 1:length(x)){
+  metro_names = c(metro_names,x[[i]][1])
+  metro_states = c(metro_states,x[[i]][2])
+}
+
+df_2019$metro = metro_names
+df_2019$state = metro_states
+df_2019$NAME = NULL
+```
+
+Ok, most importantly: our dataset is in 'long' version. It would be useful to have one column for each variable (in our example, population and median age) so that we can use that easily in our analyses (for example, regressions, or map visualizations!) So let's make that conversion. We will use the 'estimate' values for each variable.
+
+```{r}
+#remove the columns we will not use
+df_2019$moe = NULL
+df_2019$variable = NULL
+
+#convert the data from long to wide version
+df_2019 = df_2019 %>%
+  pivot_wider(names_from = varname,
+              values_from = estimate)
+```
+
+And we are ready to roll!
+
+```{r}
+head(df_2019)
+```
+
+Note: GEOID refers to the blocks. Note sure how useful that information is given that some metro areas will be located across multiple blocks. Use it at your own discretion.
