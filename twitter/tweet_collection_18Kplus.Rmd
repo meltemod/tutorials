@@ -134,28 +134,6 @@ names(tweets)
 tweets[1,1:10] #list the first 10 columns
 ```
 
-This is a lot of information! Right now we have 5 tweets, but what if we were to have... A million tweets?!? Well, there are ways to save to data frames in compressed formats. For example, you can save it as a csv, fst, or a compressed csv file. For bigger files I prefer to use the data.table package for working with large files and save them as fst, so this is what I will use for now. However, you can use other options!
-
-**Note:** There is also an option to save the data as json file, but this is not what I will go into in today's tutorial.
-
-```{r, echo=FALSE, results="hide"}
-library(data.table)
-library(fst)
-```
-
-```{r}
-fname_test <- file.path(export_loc,"test.fst")
-fname_test
-#save the file in fst format
-fwrite(tweets, fname_test)
-```
-
-But, let's delete this for now, so that we can start from scratch.
-
-```{r}
-file.remove(fname_test)
-```
-
 ##Now it is time for the real deal: collect more than 18K!
 
 So, there is this thing called 'rate limit,' and you need to be beware about this. When using Twitter's standard API to collect data from the past, you are limited with collection 18K tweets at a time. This means, you need to make sure that you need to wait for 15 minute before you ask for the 18,001st tweet you request to collect. Although **search_tweets()** function includes a parameter called *retryonratelimit = * and when you set this to *"TRUE"* it will to the sleeping part automatically for you, if you are aiming to collect, say, 1 million tweets, there is a huge chance that your connection might be lost, and you can end up losing what you collected thus far. Therefore, my suggestion is to write your code so that even if you lose connection or your function breaks for some unforeseen reason, you still get to keep the data you collected thus far, and you can get to save that.
@@ -167,6 +145,9 @@ To this is what we will focus on today.
 search_tweets() function allows you to do multiple term searches at a time. For example, it is possible to not only search for #rladies" but also "#rstats" at one go. You will know what your query included today, but, when you look at your data, sat, three months from now, will you remember what exactly you searched for? So, create a reminder file for yourself. A very simple text file.
 
 ```{r}
+library(data.table)
+library(fst)
+
 q <- list()
 q[[1]] <- paste("search query:",query)
 fwrite(q, file = file.path(export_loc,"readme.txt"))
@@ -192,220 +173,95 @@ We can write a loop function to do this for us. Before we do so, however, keep i
 
 The parameter you need to be aware of for this purpose is called *max_id()*. Say, in your first search, you collected five tweets with the following tweet numbers: 3046,2034,1984,832,824 (because the newest tweets will have higher numbers, this is how they will be ordered. The newest tweet is collected first, then an older one, and so forth). In your second search, if you set your max_id parameter to max_id="824", this will search tweets with the id number 824 or lower that fit your search criteria. This way, you will know for sure that you are collecting older tweets from what you have collected thus far.
 
-Let's start with writing a function that collects 180K tweets:
-```{r, eval=T, echo=T}
-#first, set the parameters
-# query <- "#rladies"
-# n_search <- 18000
-# n_total <- 1000000
-# round_total <- 10
-# rt <- FALSE #do not include retweets in our search
-# maxid <- NULL #for the first round, set maxid to null, which will let us collect the newest tweets.
+We also need to be careful about naming our files. Each data should have a number, and we can use max_id for numbering purposes: such as "tweets_3478563047560131.csv","tweets_3476730928467093.csv"
 
-#FUNCTION:
-collect180K = function(query,
-                       n_search = 18000,
-                       round_total = 10,
-                       rt = FALSE,
-                       maxid = NULL){
-  #create an empty list, we will save the 10 dataframes we will collect as list items here.
-  tweetList <- list() 
-  #the loop:
-  for (i in c(1:round_total)){
-    print(paste("data number:" ,i, "out of", round_total))
-    tweets <- search_tweets(query,
-                            include_rts=rt, 
-                            n=n_search,
-                            max_id = maxid)
-    tweetList[[i]] <- tweets
-    maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
-    rm(tweets)
-    #sleep for 15 minutes before collecting the next dataset
-    if(i<round_total){
-      print('sleeping for 15 minutes')
-      Sys.sleep(60*15)
-      }
-    }
-  result <- rbindlist(tweetList) #bind all the dataframes in the list to one dataframe. a data.table function.
-  result
-  }
-
-
-```
-
-We also need to be careful about naming our files. Each data should have a number, such as "tweets_1.fst","tweets_2.fst" and so on. Note that search_tweets() function collects tweets in the order from newest to the oldest, so the file with the lowest number value will include the newest tweets. Also, keep in mind that you may reach to two-digit or three-digit file numbers if you are collecting a massive dataset. To make sure that the datasets will be ordered from newest to the oldest in your folder, add preceding zeros to those numbers, such as "tweets_001.fst","tweets_002.fst"
+The dataset collected using search_tweets function will require some column adjusting before saving as .csv, because some columns will be lists. The function below makes that adjustment:
 
 ```{r}
-paste0("tweets_",sprintf("%03d", 1),".fst")
-paste0("tweets_",sprintf("%03d", 54),".fst")
+
+#unlist the list columns in twitter
+adjust_data= function(list){
+  df_tweets <- rbindlist(list) #bind all the dataframes in the list to one dataframe. a data.table function.
+  df_tweets[,hashtags:= sapply(hashtags, toString)]
+  df_tweets[,symbols:= sapply(symbols, toString)]
+  df_tweets[,urls_url:= sapply(urls_url, toString)]
+  df_tweets[,urls_t.co:= sapply(urls_t.co, toString)]
+  df_tweets[,urls_expanded_url:= sapply(urls_expanded_url, toString)]
+  df_tweets[,media_url:= sapply(media_url, toString)]
+  df_tweets[,media_t.co:= sapply(media_t.co, toString)]
+  df_tweets[,media_expanded_url:= sapply(media_expanded_url, toString)]
+  df_tweets[,media_type:= sapply(media_type, toString)]
+  df_tweets[,ext_media_url:= sapply(ext_media_url, toString)]
+  df_tweets[,ext_media_t.co:= sapply(ext_media_t.co, toString)]
+  df_tweets[,ext_media_expanded_url:= sapply(ext_media_expanded_url, toString)]
+  df_tweets[,ext_media_type:= sapply(ext_media_type, toString)]
+  df_tweets[,mentions_user_id:= sapply(mentions_user_id, toString)]
+  df_tweets[,mentions_screen_name:= sapply(mentions_screen_name, toString)]
+  df_tweets[,geo_coords:= sapply(geo_coords, toString)]
+  df_tweets[,coords_coords:= sapply(coords_coords, toString)]
+  df_tweets[,bbox_coords:= sapply(bbox_coords, toString)]
+  df_tweets
+}
+
 ```
 
-Now, if you are starting to collect tweets fresh, you will give your file the name "tweets_001.fst". However, it is possible that your code might break and you might need to start over. You do not want to overwrite what you collected thus far, right?
-
-Say, your last saved file is names as "tweets_005.fst". You want to make sure of two things in this case:
-
-*Naming your next file as "tweets_006.fst",
-*Setting the max_is to the status_id value of the last row of the dataset saved as "tweets_005.fst".
-
-So, you want your code to do this:
-
-*check if there is only one (i.e., readme.txt file) saved in the folder.
-*if so, 
-  +set your starting maxid to NULL , collect your data, and save it as  "tweets_001.fst".
-*otherwise,
-  + Otherwise, check the name of the last file listed in your folder, grab the digits from the filename, and add 1 to that value.
-  +read the status_id column of the last saved dataset, and set your maxid parameter to the value listed in the last row.
-  
-So, let's revise our former loop to collect 180K tweets and then save it to its designated folder:
+Now, we can start collecting tweets! Let's write the function:
 
 ```{r, eval=T, echo=T}
-#FUNCTION:
-collect180K = function(query,
-                       n_search = 18000,
-                       round_total = 10,
-                       rt = FALSE,
-                       maxid = NULL,
-                       export_to #set the folder you will save the files to.
-                       ){
-  #create an empty list, we will save the 10 dataframes we will collect as list items here.
+#search tweets with 15 min. sleeping + data org method.
+my_search_tweets = function(q, # query
+                                rt=FALSE, #whether include  retweets or not
+                                n_search=18000, #how many tweets to search at a time
+                                maxid=NULL, # default is NULL
+                                round_total=100, #max. rounds of search
+                                since=NULL,
+                                until=NULL,
+                                loc_export){ #location to save file
+  #create an empty list
   tweetList <- list() 
-  #read the list of files saved under the data folder to a variable called 'files'
-  files <- list.files(path = export_loc)
-  
-  #if there are files already saved in the folder other than the readme file:
-  if (length(files)>1){
-    tmp <- fread(file.path(export_loc,files[length(files)]), select = "status_id")
-    #get the status_id of the oldest tweet, set it as `maxid` (i.e. update maxid)
-    maxid <- as.character(tail(tmp$status_id, 1))
-    #set the file number based on the number of the last saved file (add one)
-    file.no <- as.numeric(
-      str_extract(files[length(files)], '[[:digit:]]+')
-      ) + 1
-    rm(tmp) #remove tmp
-  }else{
-    file.no <- 1 #and maxid is still null
-  }
-
-  #the loop:
-  for (i in c(1:round_total)){
-    print(paste("file number:",file.no,"; data number:",i,"out of",round_total))
-    tweets <- search_tweets(query,
+  isit="NO"
+  for(i in 1:round_total){
+    print(paste("data number:",i,"out of",round_total))
+    tweets <- search_tweets(q=q,
                             include_rts=rt, 
                             n=n_search,
-                            max_id = maxid)
-    tweetList[[i]] <- tweets
-    maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
+                            max_id = maxid,
+                            since=since,
+                            until=until)
+    tweetList[[1]] <- tweets
+    df_tweets=adjust_data(list=tweetList)
+    if(is.null(maxid)==FALSE){
+      #set isit to 'YES' if the search collects no new tweets anymore.
+      if(maxid==tail(tweets,1)$status_id){isit='YES'} 
+    }
+    #stop the loop if maxid does not update anymore, after sleeping for 2 minutes.
+    if(isit=="YES"){
+      print('search complete. Will close after 2 minutes of sleep time.')
+      Sys.sleep(60*2)
+      break}
+    #reset the maxid to use it in the next round of tweet collection
+    maxid <- tail(tweets,1)$status_id 
+    #save data
+    filename=paste0('search_tweets_',maxid,'.csv')
+    fwrite(df_tweets,file.path(loc_export,filename))
+    print('Data saved.')
     rm(tweets)
-  #sleep for 15 minutes before collecting the next dataset
-    if(i<round_total){
-      print('sleeping for 15 minutes')
-      Sys.sleep(60*15)
-    }
+    #sleep for 15 minutes before collecting the next dataset
+    print('sleeping for 15 minutes')
+    Sys.sleep(60*15)
   }
-  result <- rbindlist(tweetList)
-  #save the dataset
-  fwrite(result, file = file.path(export_to,paste0("tweets_",sprintf("%03d", file.no),".fst")))
 }
+
 
 ```
 
-But what if the total number of tweets we are searching is less than 180K? We need the loop to break at that point. To do so, we can create a count variable:
+And let's collect all tweets from today with the hashtag: '#coronavirus' posted in the last two days:
 
 ```{r, eval=T, echo=T}
-#FUNCTION:
-collect180K = function(query,
-                       n_total,
-                       export_to, #set the folder you will save the files to.
-                       n_search = 18000,
-                       round_total = 10,
-                       rt = FALSE,
-                       maxid = NULL,
-                       count = 0
-                       ){
-
-  #create an empty list, we will save the 10 dataframes we will collect as list items here.
-  tweetList <- list() 
-  #read the list of files saved under the data folder to a variable called 'files'
-  files <- list.files(path = export_loc)
-  
-  #if there are files already saved in the folder other than the readme file:
-  if (length(files)>1){
-    tmp <- fread(file.path(export_loc,files[length(files)]), select = "status_id")
-    #get the status_id of the oldest tweet, set it as `maxid` (i.e. update maxid)
-    maxid <- as.character(tail(tmp$status_id, 1))
-    #set the file number based on the number of the last saved file (add one)
-    file.no <- as.numeric(
-      str_extract(files[length(files)], '[[:digit:]]+')
-      ) + 1
-    rm(tmp) #remove tmp
-  }else{
-    file.no <- 1 #and maxid is still null
-  }
-
-  
-  #the loop:
-  #run the loop only if count is smaller than the total number of tweets we want to collect:
-  if(count < n_total){
-    for (i in c(1:round_total)){
-      print(paste("file number:",file.no,"; data number:",i,"out of",round_total))
-      tweets <- search_tweets(query,
-                            include_rts=rt, 
-                            n=n_search,
-                            max_id = maxid)
-      tweetList[[i]] <- tweets
-      maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
-      rm(tweets)
-      #update count
-      count = count + n_search
-      #sleep for 15 minutes before collecting the next dataset
-      if(i<round_total & count<n_total){
-        print('sleeping for 15 minutes')
-        Sys.sleep(60*15)
-      }
-    }
-  }
-
-  result <- rbindlist(tweetList)
-  #save the dataset
-  fwrite(result, file = file.path(export_to,paste0("tweets_",sprintf("%03d", file.no),".fst")))
-}
-
-```
-
-  
-Finally, since we want to collect and save sets of 180K tweets until we reach the total of 1M, all we need to do is to use the same function (collect180K) but automatically adjust the *round_total* parameter. 
-
-```{r, eval=T, echo=T}
-
-collectNsave = function(query,
-                       n_search = 18000,
-                       round_total = 10,
-                       n_total = 10^6,
-                       rt = FALSE,
-                       maxid = NULL,
-                       export_to,
-                       count=0){
-  #update round_total number
-  round_total = ceiling(n_total/n_search)
-  print(round_total)
-  collect180K(query=query,
-              n_total=n_total,
-              n_search=n_search, 
-              round_total=round_total,
-              rt=rt,
-              maxid=maxid,
-              export_to=export_to)
-  print(paste(count, 'tweets collected and saved with this search in total.'))
-}
-
-```
-
-Because collection 1M tweets this would take a long time to collect, I will only test for 30K tweets.
-
-```{r, eval=T, echo=T}
-collectNsave(query = '#coronavirus',
-             n_total = 3*10^4,
-             export_to = export_loc)
+my_search_tweets(q = '#coronavirus',
+                 since='2021-05-19',
+                 until='2021-05-21',
+                 loc_export = export_loc)
 ```
 
 Now, let's check the list of files in our folder:
@@ -414,102 +270,15 @@ files <- list.files(path = export_loc)
 files
 ```
 
-It worked!!! Let's check the total number of rows in the saved dataset before we finish up:
+It worked!! let's also check whether we were able to collect older tweets (i.e. whether the maxid parameter adjustment worked)
 
 ```{r}
-df = fread(file.path(export_loc,'tweets_001.fst'))
-nrow(df)
-```
-
-It actually collected 36K tweets, not 30K, because we did not set up a cutoff for n_search parameter for cases where the number of tweets requested is not a multiplication of the n_search=18000. So, to conclude, I will adjust the code for *collect180K* functions below to correct for that. Instead of count, I will use a new parameter: 'countdown'
-
-```{r}
-collect180K = function(query,
-                       n_total,
-                       export_to, #set the folder you will save the files to.
-                       n_search = 18000,
-                       round_total = 10,
-                       rt = FALSE,
-                       maxid = NULL
-                       ){
-  countdown = n_total
-  
-  #create an empty list, we will save the 10 dataframes we will collect as list items here.
-  tweetList <- list() 
-  #read the list of files saved under the data folder to a variable called 'files'
-  files <- list.files(path = export_loc)
-  
-  #if there are files already saved in the folder other than the readme file:
-  if (length(files)>1){
-    tmp <- fread(file.path(export_loc,files[length(files)]), select = "status_id")
-    #get the status_id of the oldest tweet, set it as `maxid` (i.e. update maxid)
-    maxid <- as.character(tail(tmp$status_id, 1))
-    #set the file number based on the number of the last saved file (add one)
-    file.no <- as.numeric(
-      str_extract(files[length(files)], '[[:digit:]]+')
-      ) + 1
-    rm(tmp) #remove tmp
-  }else{
-    file.no <- 1 #and maxid is still null
-  }
-
-  
-  #the loop:
-  #run the loop only if count is smaller than the total number of tweets we want to collect:
-  if(countdown > 0){
-    
-    if(countdown < n_search){n_search = countdown} #update n_search based on remaining number of tweets to be collected
-    
-    for (i in c(1:round_total)){
-      print(paste("file number:",file.no,"; data number:",i,"out of",round_total))
-      tweets <- search_tweets(query,
-                            include_rts=rt, 
-                            n=n_search,
-                            max_id = maxid)
-      tweetList[[i]] <- tweets
-      maxid <- tail(tweets,1)$status_id #reset the maxid to use it in the next round of tweet collection
-      rm(tweets)
-      #update countdown
-      countdown = countdown - n_search
-      #sleep for 15 minutes before collecting the next dataset
-      if(i<round_total & countdown>0){
-        print('sleeping for 15 minutes')
-        Sys.sleep(60*15)
-      }
-    }
-  }
-  result <- rbindlist(tweetList)
-  #save the dataset
-  fwrite(result, file = file.path(export_to,paste0("tweets_",sprintf("%03d", file.no),".fst")))
-}
-```
-
-Now, let's try again. This way, we can also test whether the new dataset will contain older tweets (i.e. whether the function will be able to update the maxid parameter successfully)
-
-```{r, eval=T, echo=T}
-collectNsave(query = '#coronavirus',
-             n_total = 3*10^4,
-             export_to = export_loc)
-```
-
-This time we should have two datasets.
-```{r}
-files <- list.files(path = export_loc)
-files
-```
-
-Let check the total number of tweets in the second dataset
-
-```{r}
-df2 = fread(file.path(export_loc,'tweets_002.fst'))
+df1 = fread(file.path(export_loc,files[2]))
+df2 = fread(file.path(export_loc,files[3]))
+nrow(df1)
 nrow(df2)
+new = length(unique(c(df1$status_id,df2$status_id))) 
+new
 ```
 
-And whether the second dataset collected older tweets
-```{r}
-#print IDs of the first and last tweet in df1
-print(df[1,1],df[nrow(df),1])
-
-#print IDs of the first and last tweet in df2
-print(df2[1,1],df2[nrow(df),1])
-```
+That also worked!!!
