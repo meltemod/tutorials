@@ -4,4 +4,4 @@ This page includes some tutorials for in R that I prepared myself. These tutoria
 
 The tutorials are named and organized in folders based on categories (such as tweet collection, or finding geolocations...), and likely to include .html files randered from R markdown files. 
 
-To view the html files appropriately, pleae use this webpage: https://htmlpreview.github.io/
+For a human-friendly view of the html files with codes and instructions, pleae use this webpage: https://htmlpreview.github.io/
